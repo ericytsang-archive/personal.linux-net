@@ -6,8 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <fcntl.h>
 
-#define LISTENQ 5
+#define LISTENQ 2048
 
 static void fatal_error(const char* errstr);
 
@@ -31,10 +32,13 @@ static void fatal_error(const char* errstr);
  *
  * @param      port port number on local host to bind the new server socket to.
  *
+ * @param      isNonBlocking true if the socket should be put into non blocking
+ *   mode; false otherwise.
+ *
  * @return     socket file descriptor to the new server socket. may return -1 on
- *   error.
+ *   binding error.
  */
-int make_tcp_server_socket(short port)
+int make_tcp_server_socket(short port, bool isNonBlocking)
 {
     // local address that server socket is bound to
     struct sockaddr localAddr;
@@ -54,6 +58,16 @@ int make_tcp_server_socket(short port)
         fatal_error("failed to set sock opt to reuse address");
     }
 
+    // make the server listening socket non-blocking
+    if (isNonBlocking)
+    {
+        int existingFlags = fcntl(svrSock,F_GETFL,0);
+        if (existingFlags == -1 || fcntl(svrSock,F_SETFL,O_NONBLOCK|existingFlags) == -1)
+        {
+            fatal_error("fcntl");
+        }
+    }
+
     // bind server socket to local host
     localAddr = make_sockaddr(0, INADDR_ANY, port);
     if(bind(svrSock, (struct sockaddr*) &localAddr, sizeof(localAddr)) == -1)
@@ -64,7 +78,10 @@ int make_tcp_server_socket(short port)
     }
 
     // put server socket into listening mode
-    listen(svrSock, LISTENQ);
+    if (listen(svrSock, LISTENQ) == -1)
+    {
+        fatal_error("listen");
+    }
 
     // return...
     return svrSock;
